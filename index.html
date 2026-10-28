@@ -282,7 +282,9 @@ button:focus-visible, input:focus-visible, select:focus-visible { outline: 2px s
     $("balance").textContent = yuan(inc - out);
     const now = new Date();
     const daysIn = new Date(y, m, 0).getDate();
-    const elapsed = monthKey === ymKey(now) ? now.getDate() : daysIn;
+    const lastDay = monthKey === ymKey(now) ? now.getDate() : daysIn;
+    const firstDay = entries.length ? Math.min(...entries.map(e => Number(e.date.slice(8, 10)))) : lastDay;
+    const elapsed = lastDay - firstDay + 1;
     $("daily").textContent = yuan(Math.round(out / Math.max(1, elapsed)));
 
     const bb = $("budgetBox");
@@ -341,9 +343,9 @@ button:focus-visible, input:focus-visible, select:focus-visible { outline: 2px s
         const btn = document.createElement("button"); btn.type = "button"; btn.className = "entry";
         const tag = document.createElement("span"); tag.className = "tag" + (e.type === "in" ? " in" : ""); tag.textContent = (e.cat || "其他").slice(0, 2);
         const meta = document.createElement("span"); meta.className = "meta";
-        const c = document.createElement("div"); c.className = "c"; c.textContent = e.cat || "其他";
+        const c = document.createElement("div"); c.className = "c"; c.textContent = e.note || e.cat || "其他";
         meta.append(c);
-        if (e.note) { const n = document.createElement("div"); n.className = "n"; n.textContent = e.note; meta.append(n); }
+        if (e.note) { const n = document.createElement("div"); n.className = "n"; n.textContent = e.cat || "其他"; meta.append(n); }
         const v = document.createElement("span"); v.className = "v num" + (e.type === "in" ? " in" : "");
         v.textContent = (e.type === "in" ? "+" : "-") + yuan(e.amount).slice(1);
         btn.append(tag, meta, v);
