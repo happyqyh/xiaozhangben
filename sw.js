@@ -1,5 +1,5 @@
 // Network first, cached copy when offline. Records live in localStorage, not here.
-const CACHE = "xzb-v1";
+const CACHE = "xzb-v2";
 const FILES = ["./", "index.html", "manifest.webmanifest", "apple-touch-icon.png", "icon-192.png", "icon-512.png"];
 self.addEventListener("install", (e) => { e.waitUntil(caches.open(CACHE).then((c) => c.addAll(FILES)).then(() => self.skipWaiting())); });
 self.addEventListener("activate", (e) => { e.waitUntil(self.clients.claim()); });
