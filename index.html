@@ -1,0 +1,620 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>小账本</title>
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="小账本">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="theme-color" content="#f3f5f4" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#111614" media="(prefers-color-scheme: dark)">
+<link rel="apple-touch-icon" href="apple-touch-icon.png">
+<link rel="icon" href="icon-192.png">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Noto+Sans+SC:wght@400;500;700&family=DM+Mono:wght@400;500&display=swap">
+<style>
+/* Layout: one narrow column like a pocket ledger — month summary on top, day-grouped entries below, a fixed "记一笔" bar at the bottom. */
+:root {
+  --bg: #f3f5f4;
+  --paper: #ffffff;
+  --ink: #17201d;
+  --muted: #66736e;
+  --line: #dde3e0;
+  --accent: #1f6f5c;
+  --accent-soft: #e2efeb;
+  --income: #b8432f;
+  --warn: #b7791f;
+  --font-body: "Noto Sans SC", "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
+  --font-num: "DM Mono", ui-monospace, "SF Mono", Menlo, monospace;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #111614; --paper: #1a211e; --ink: #e6ece9; --muted: #93a19b; --line: #2b3531;
+    --accent: #5fbfa3; --accent-soft: #1f3a32; --income: #ee8a76; --warn: #e2b05a; color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #111614; --paper: #1a211e; --ink: #e6ece9; --muted: #93a19b; --line: #2b3531;
+  --accent: #5fbfa3; --accent-soft: #1f3a32; --income: #ee8a76; --warn: #e2b05a; color-scheme: dark;
+}
+* { box-sizing: border-box; }
+html { padding-top: env(safe-area-inset-top, 0px); -webkit-text-size-adjust: 100%; }
+[hidden] { display: none !important; }
+body { margin: 0; }
+body {
+  background: var(--bg); color: var(--ink); font-family: var(--font-body); font-size: 15px; line-height: 1.5;
+  padding-left: max(16px, env(safe-area-inset-left, 0px));
+  padding-right: max(16px, env(safe-area-inset-right, 0px));
+  padding-block: 16px calc(96px + env(safe-area-inset-bottom, 0px));
+}
+.wrap { max-width: 560px; margin: 0 auto; display: flex; flex-direction: column; gap: 16px; }
+.num { font-family: var(--font-num); font-variant-numeric: tabular-nums; }
+button { font: inherit; color: inherit; cursor: pointer; }
+button:focus-visible, input:focus-visible, select:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+.monthbar { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.monthbar h1 { margin: 0; font-size: 20px; font-weight: 700; letter-spacing: .02em; }
+.icon-btn { background: transparent; border: 1px solid var(--line); border-radius: 10px; width: 40px; height: 40px; font-size: 18px; }
+.icon-btn:disabled { opacity: .35; cursor: default; }
+
+.summary { background: var(--paper); border: 1px solid var(--line); border-radius: 14px; padding: 16px; display: flex; flex-direction: column; gap: 12px; }
+.summary .label { color: var(--muted); font-size: 13px; letter-spacing: .04em; }
+.summary .big { font-size: 34px; font-weight: 500; line-height: 1.1; }
+.summary .row { display: flex; gap: 20px; flex-wrap: wrap; font-size: 13px; color: var(--muted); }
+.summary .row b { color: var(--ink); font-weight: 500; }
+.budget { display: flex; flex-direction: column; gap: 6px; }
+.bar { height: 8px; background: var(--accent-soft); border-radius: 99px; overflow: hidden; }
+.bar > i { display: block; height: 100%; background: var(--accent); border-radius: 99px; }
+.bar.over > i { background: var(--income); }
+.budget-line { display: flex; justify-content: space-between; gap: 8px; font-size: 13px; color: var(--muted); }
+.link-btn { background: none; border: 0; padding: 0; color: var(--accent); font-size: 13px; }
+
+.section-title { font-size: 13px; color: var(--muted); letter-spacing: .06em; margin: 0 0 8px; }
+.cats { display: flex; flex-direction: column; gap: 8px; }
+.cat-row { display: grid; grid-template-columns: 4.5em 1fr auto; align-items: center; gap: 10px; font-size: 14px; }
+.cat-row .track { height: 10px; background: var(--accent-soft); border-radius: 99px; overflow: hidden; }
+.cat-row .track > i { display: block; height: 100%; background: var(--accent); }
+.cat-row .amt { min-width: 5.5em; text-align: right; }
+
+.days { display: flex; flex-direction: column; gap: 12px; }
+.day { background: var(--paper); border: 1px solid var(--line); border-radius: 14px; overflow: hidden; }
+.day-head { display: flex; justify-content: space-between; padding: 10px 14px; font-size: 13px; color: var(--muted); border-bottom: 1px solid var(--line); }
+.entry { display: grid; grid-template-columns: 2.4em 1fr auto; gap: 10px; align-items: center; width: 100%; padding: 10px 14px; background: none; border: 0; border-top: 1px solid var(--line); text-align: left; }
+.entry:first-of-type { border-top: 0; }
+.entry .tag { width: 2.4em; height: 2.4em; border-radius: 10px; background: var(--accent-soft); color: var(--accent); display: grid; place-items: center; font-size: 13px; font-weight: 700; }
+.entry .tag.in { background: color-mix(in srgb, var(--income) 15%, transparent); color: var(--income); }
+.entry .meta { min-width: 0; }
+.entry .meta .c { font-size: 15px; }
+.entry .meta .n { font-size: 12px; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.entry .v { font-size: 16px; }
+.entry .v.in { color: var(--income); }
+
+.empty { background: var(--paper); border: 1px dashed var(--line); border-radius: 14px; padding: 28px 16px; text-align: center; color: var(--muted); display: flex; flex-direction: column; gap: 6px; }
+.empty b { color: var(--ink); font-weight: 500; }
+.notice { font-size: 13px; color: var(--warn); background: color-mix(in srgb, var(--warn) 12%, transparent); border-radius: 10px; padding: 10px 12px; }
+
+.hint#backupHint { margin-top: -4px; }
+.tools { display: flex; gap: 8px; flex-wrap: wrap; }
+.ghost { background: var(--paper); border: 1px solid var(--line); border-radius: 10px; padding: 8px 12px; font-size: 13px; }
+
+.addbar { position: fixed; left: 0; right: 0; bottom: 0; padding: 12px max(16px, env(safe-area-inset-right, 0px)) calc(12px + env(safe-area-inset-bottom, 0px)) max(16px, env(safe-area-inset-left, 0px)); background: linear-gradient(to top, var(--bg) 70%, transparent); display: flex; justify-content: center; }
+.primary { background: var(--accent); color: var(--paper); border: 0; border-radius: 14px; padding: 14px 20px; font-size: 16px; font-weight: 700; width: 100%; max-width: 560px; }
+.primary:disabled { opacity: .5; cursor: default; }
+
+/* Sheet */
+.scrim { position: fixed; inset: 0; background: rgba(0,0,0,.35); display: flex; align-items: flex-end; justify-content: center; z-index: 20; }
+.sheet { background: var(--paper); width: 100%; max-width: 560px; border-radius: 18px 18px 0 0; padding: 16px max(16px, env(safe-area-inset-right, 0px)) calc(16px + env(safe-area-inset-bottom, 0px)) max(16px, env(safe-area-inset-left, 0px)); display: flex; flex-direction: column; gap: 14px; max-height: 92%; overflow-y: auto; }
+.sheet-head { display: flex; justify-content: space-between; align-items: center; }
+.sheet-head h2 { margin: 0; font-size: 17px; }
+.seg { display: inline-flex; background: var(--bg); border-radius: 10px; padding: 3px; gap: 3px; }
+.seg button { border: 0; background: transparent; padding: 6px 14px; border-radius: 8px; font-size: 14px; }
+.seg button[aria-pressed="true"] { background: var(--paper); box-shadow: 0 1px 2px rgba(0,0,0,.12); font-weight: 700; }
+.amount { display: flex; align-items: baseline; gap: 6px; border-bottom: 2px solid var(--accent); padding-bottom: 4px; }
+.amount span { font-size: 24px; color: var(--muted); }
+.amount input { border: 0; background: transparent; color: var(--ink); font-family: var(--font-num); font-size: 36px; width: 100%; min-width: 0; outline: none; }
+.chips { display: flex; flex-wrap: wrap; gap: 8px; }
+.chip { border: 1px solid var(--line); background: var(--paper); border-radius: 99px; padding: 6px 12px; font-size: 14px; }
+.chip[aria-pressed="true"] { background: var(--accent); border-color: var(--accent); color: var(--paper); }
+.field { display: flex; flex-direction: column; gap: 4px; font-size: 13px; color: var(--muted); }
+.field input, .field select { font: inherit; font-size: 15px; color: var(--ink); background: var(--bg); border: 1px solid var(--line); border-radius: 10px; padding: 10px 12px; width: 100%; }
+.two { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.sheet-actions { display: flex; gap: 10px; }
+.danger { background: transparent; border: 1px solid var(--income); color: var(--income); border-radius: 14px; padding: 12px 16px; font-size: 15px; }
+.err { color: var(--income); font-size: 13px; min-height: 1em; }
+.hint { font-size: 12px; color: var(--muted); }
+.preview { font-size: 13px; border: 1px solid var(--line); border-radius: 10px; overflow: hidden; }
+.preview div { display: flex; justify-content: space-between; gap: 8px; padding: 6px 10px; border-top: 1px solid var(--line); }
+.preview div:first-child { border-top: 0; }
+@media (prefers-reduced-motion: no-preference) { .sheet { animation: up .18s ease-out; } @keyframes up { from { transform: translateY(24px); opacity: .6; } } }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="monthbar">
+    <button class="icon-btn" id="prev" aria-label="上个月">‹</button>
+    <h1 id="monthTitle">本月</h1>
+    <button class="icon-btn" id="next" aria-label="下个月">›</button>
+  </div>
+
+  <div id="notice" class="notice" hidden></div>
+
+  <section class="summary" aria-label="本月汇总">
+    <div>
+      <div class="label">本月支出</div>
+      <div class="big num" id="outTotal">¥0.00</div>
+    </div>
+    <div class="row">
+      <span>收入 <b class="num" id="inTotal">¥0.00</b></span>
+      <span>结余 <b class="num" id="balance">¥0.00</b></span>
+      <span>日均支出 <b class="num" id="daily">¥0.00</b></span>
+    </div>
+    <div class="budget" id="budgetBox"></div>
+  </section>
+
+  <section id="catSection" hidden>
+    <h2 class="section-title">支出分类</h2>
+    <div class="cats" id="cats"></div>
+  </section>
+
+  <section>
+    <h2 class="section-title">明细</h2>
+    <div class="days" id="days"></div>
+  </section>
+
+  <div class="hint" id="backupHint"></div>
+  <div class="tools">
+    <button class="ghost" id="importBtn">导入支付宝账单</button>
+    <button class="ghost" id="backupBtn">备份数据</button>
+    <button class="ghost" id="restoreBtn">恢复备份</button>
+    <input type="file" id="importFile" accept=".csv,text/csv" hidden>
+    <input type="file" id="restoreFile" accept=".json,application/json" hidden>
+  </div>
+</div>
+
+<div class="addbar"><button class="primary" id="addBtn">记一笔</button></div>
+
+<div class="scrim" id="sheetScrim" hidden>
+  <form class="sheet" id="entryForm" autocomplete="off">
+    <div class="sheet-head">
+      <div class="seg" role="group" aria-label="收支类型">
+        <button type="button" id="typeOut" aria-pressed="true">支出</button>
+        <button type="button" id="typeIn" aria-pressed="false">收入</button>
+      </div>
+      <button type="button" class="icon-btn" id="closeSheet" aria-label="关闭">×</button>
+    </div>
+    <label class="amount"><span>¥</span><input id="amountInput" inputmode="decimal" placeholder="0.00" aria-label="金额"></label>
+    <div class="chips" id="catChips" role="group" aria-label="分类"></div>
+    <div class="two">
+      <label class="field">日期<input type="date" id="dateInput"></label>
+      <label class="field">备注<input id="noteInput" placeholder="比如:林晶吊龙"></label>
+    </div>
+    <div class="err" id="formErr" role="alert"></div>
+    <div class="sheet-actions">
+      <button type="button" class="danger" id="deleteBtn" hidden>删除</button>
+      <button type="submit" class="primary" id="saveBtn">保存</button>
+    </div>
+  </form>
+</div>
+
+<div class="scrim" id="budgetScrim" hidden>
+  <form class="sheet" id="budgetForm">
+    <div class="sheet-head"><h2>每月预算</h2><button type="button" class="icon-btn" id="closeBudget" aria-label="关闭">×</button></div>
+    <label class="amount"><span>¥</span><input id="budgetInput" inputmode="decimal" placeholder="不设预算就留空" aria-label="每月预算"></label>
+    <div class="hint">只算支出,每个月都用这个数。</div>
+    <div class="err" id="budgetErr" role="alert"></div>
+    <button type="submit" class="primary">保存预算</button>
+  </form>
+</div>
+
+<div class="scrim" id="importScrim" hidden>
+  <div class="sheet">
+    <div class="sheet-head"><h2>导入支付宝账单</h2><button type="button" class="icon-btn" id="closeImport" aria-label="关闭">×</button></div>
+    <div class="hint" id="importSummary"></div>
+    <div class="preview" id="importPreview"></div>
+    <div class="err" id="importErr" role="alert"></div>
+    <button type="button" class="primary" id="confirmImport">导入</button>
+  </div>
+</div>
+
+<script>
+(() => {
+  const OUT_CATS = ["餐饮", "买菜", "交通", "购物", "日用", "居家", "猫咪", "运动", "医疗", "美容", "娱乐", "人情", "话费", "其他"];
+  const IN_CATS = ["工资", "奖金", "理财", "退款", "红包", "其他"];
+  const $ = (id) => document.getElementById(id);
+
+  const KEY = "xzb.v1";
+  let store = { entries: [], budget: 0, lastBackup: "" };
+  let db = true;
+  let monthKey = ymKey(new Date());
+  let monthData = { entries: [] };
+  let editing = null; // {month, id}
+  let formType = "out";
+  let formCat = OUT_CATS[0];
+  let importRows = [];
+
+  function ymKey(d) { return d.getFullYear() + "-" + String(d.getMonth() + 1).padStart(2, "0"); }
+  function todayStr() { const d = new Date(); return ymKey(d) + "-" + String(d.getDate()).padStart(2, "0"); }
+  function yuan(cents) { return (cents < 0 ? "-¥" : "¥") + (Math.abs(cents) / 100).toLocaleString("zh-CN", { minimumFractionDigits: 2, maximumFractionDigits: 2 }); }
+  function parseCents(s) {
+    const t = String(s || "").replace(/[¥,\s]/g, "");
+    if (!/^\d+(\.\d{0,2})?$/.test(t)) return null;
+    return Math.round(parseFloat(t) * 100);
+  }
+  function newId() { return Date.now().toString(36) + Math.random().toString(36).slice(2, 8); }
+  function showNotice(msg) { const n = $("notice"); n.textContent = msg; n.hidden = !msg; }
+
+  function loadStore() {
+    try { const s = JSON.parse(localStorage.getItem(KEY) || "null"); if (s && Array.isArray(s.entries)) store = Object.assign({ budget: 0, lastBackup: "" }, s); } catch {}
+  }
+  function saveStore() {
+    localStorage.setItem(KEY, JSON.stringify(store));
+  }
+  async function mutateMonth(key, mutator) {
+    const others = store.entries.filter(e => e.date.slice(0, 7) !== key);
+    const m = { entries: store.entries.filter(e => e.date.slice(0, 7) === key) };
+    mutator(m);
+    store.entries = others.concat(m.entries);
+    saveStore();
+    monthData = { entries: store.entries.filter(e => e.date.slice(0, 7) === monthKey) };
+    render();
+  }
+  function subscribeMonth() {
+    monthData = { entries: store.entries.filter(e => e.date.slice(0, 7) === monthKey) };
+    render();
+  }
+
+  function render() {
+    const [y, m] = monthKey.split("-").map(Number);
+    $("monthTitle").textContent = y + "年" + m + "月";
+    $("next").disabled = monthKey >= ymKey(new Date());
+    const entries = (monthData.entries || []).slice().sort((a, b) => (b.date + b.ts).localeCompare(a.date + a.ts));
+    let out = 0, inc = 0;
+    const byCat = {};
+    for (const e of entries) {
+      if (e.type === "in") inc += e.amount;
+      else { out += e.amount; byCat[e.cat] = (byCat[e.cat] || 0) + e.amount; }
+    }
+    $("outTotal").textContent = yuan(out);
+    $("inTotal").textContent = yuan(inc);
+    $("balance").textContent = yuan(inc - out);
+    const now = new Date();
+    const daysIn = new Date(y, m, 0).getDate();
+    const elapsed = monthKey === ymKey(now) ? now.getDate() : daysIn;
+    $("daily").textContent = yuan(Math.round(out / Math.max(1, elapsed)));
+
+    const bb = $("budgetBox");
+    bb.replaceChildren();
+    const settings = { budget: store.budget || 0 };
+    renderBackupHint();
+    if (settings.budget > 0) {
+      const pct = Math.min(100, (out / settings.budget) * 100);
+      const bar = document.createElement("div");
+      bar.className = "bar" + (out > settings.budget ? " over" : "");
+      const fill = document.createElement("i"); fill.style.width = pct + "%"; bar.append(fill);
+      const line = document.createElement("div"); line.className = "budget-line";
+      const left = document.createElement("span");
+      left.textContent = out > settings.budget ? "超出预算 " + yuan(out - settings.budget) : "预算还剩 " + yuan(settings.budget - out);
+      const right = document.createElement("button"); right.className = "link-btn"; right.type = "button";
+      right.textContent = "预算 " + yuan(settings.budget); right.onclick = openBudget;
+      line.append(left, right);
+      bb.append(bar, line);
+    } else {
+      const b = document.createElement("button"); b.className = "link-btn"; b.type = "button";
+      b.textContent = "设个每月预算"; b.onclick = openBudget; bb.append(b);
+    }
+
+    const cats = Object.entries(byCat).sort((a, b) => b[1] - a[1]);
+    $("catSection").hidden = cats.length === 0;
+    const cw = $("cats"); cw.replaceChildren();
+    const max = cats.length ? cats[0][1] : 1;
+    for (const [c, v] of cats) {
+      const row = document.createElement("div"); row.className = "cat-row";
+      const name = document.createElement("span"); name.textContent = c;
+      const track = document.createElement("div"); track.className = "track";
+      const fill = document.createElement("i"); fill.style.width = (v / max) * 100 + "%"; track.append(fill);
+      const amt = document.createElement("span"); amt.className = "amt num"; amt.textContent = yuan(v);
+      row.append(name, track, amt); cw.append(row);
+    }
+
+    const dw = $("days"); dw.replaceChildren();
+    if (!entries.length) {
+      const e = document.createElement("div"); e.className = "empty";
+      const b = document.createElement("b"); b.textContent = "这个月还没有记录";
+      const s = document.createElement("span"); s.textContent = "点下面的「记一笔」,或者导入支付宝账单。";
+      e.append(b, s); dw.append(e); return;
+    }
+    const groups = new Map();
+    for (const e of entries) { if (!groups.has(e.date)) groups.set(e.date, []); groups.get(e.date).push(e); }
+    const wk = ["日", "一", "二", "三", "四", "五", "六"];
+    for (const [date, list] of groups) {
+      const d = new Date(date + "T00:00:00");
+      const box = document.createElement("div"); box.className = "day";
+      const head = document.createElement("div"); head.className = "day-head";
+      const l = document.createElement("span"); l.textContent = (d.getMonth() + 1) + "月" + d.getDate() + "日 周" + wk[d.getDay()];
+      const dayOut = list.filter(x => x.type !== "in").reduce((s, x) => s + x.amount, 0);
+      const r = document.createElement("span"); r.className = "num"; r.textContent = "支出 " + yuan(dayOut);
+      head.append(l, r); box.append(head);
+      for (const e of list) {
+        const btn = document.createElement("button"); btn.type = "button"; btn.className = "entry";
+        const tag = document.createElement("span"); tag.className = "tag" + (e.type === "in" ? " in" : ""); tag.textContent = (e.cat || "其他").slice(0, 2);
+        const meta = document.createElement("span"); meta.className = "meta";
+        const c = document.createElement("div"); c.className = "c"; c.textContent = e.cat || "其他";
+        meta.append(c);
+        if (e.note) { const n = document.createElement("div"); n.className = "n"; n.textContent = e.note; meta.append(n); }
+        const v = document.createElement("span"); v.className = "v num" + (e.type === "in" ? " in" : "");
+        v.textContent = (e.type === "in" ? "+" : "-") + yuan(e.amount).slice(1);
+        btn.append(tag, meta, v);
+        btn.onclick = () => openSheet(e);
+        box.append(btn);
+      }
+      dw.append(box);
+    }
+  }
+
+  function renderChips() {
+    const wrap = $("catChips"); wrap.replaceChildren();
+    for (const c of (formType === "in" ? IN_CATS : OUT_CATS)) {
+      const b = document.createElement("button"); b.type = "button"; b.className = "chip"; b.textContent = c;
+      b.setAttribute("aria-pressed", String(c === formCat));
+      b.onclick = () => { formCat = c; renderChips(); };
+      wrap.append(b);
+    }
+  }
+  function setType(t) {
+    formType = t;
+    $("typeOut").setAttribute("aria-pressed", String(t === "out"));
+    $("typeIn").setAttribute("aria-pressed", String(t === "in"));
+    const list = t === "in" ? IN_CATS : OUT_CATS;
+    if (!list.includes(formCat)) formCat = list[0];
+    renderChips();
+  }
+  function openSheet(entry) {
+    if (!db) return;
+    editing = entry ? { month: entry.date.slice(0, 7), id: entry.id } : null;
+    formCat = entry ? entry.cat : OUT_CATS[0];
+    setType(entry ? entry.type : "out");
+    $("amountInput").value = entry ? (entry.amount / 100).toFixed(2) : "";
+    $("dateInput").value = entry ? entry.date : (monthKey === ymKey(new Date()) ? todayStr() : monthKey + "-01");
+    $("noteInput").value = entry ? (entry.note || "") : "";
+    $("deleteBtn").hidden = !entry;
+    $("deleteBtn").textContent = "删除";
+    $("deleteBtn").dataset.armed = "";
+    $("formErr").textContent = "";
+    $("sheetScrim").hidden = false;
+    setTimeout(() => $("amountInput").focus(), 50);
+  }
+  function closeSheet() { $("sheetScrim").hidden = true; editing = null; }
+
+  async function saveEntry(ev) {
+    ev.preventDefault();
+    const amount = parseCents($("amountInput").value);
+    const date = $("dateInput").value;
+    if (!amount) { $("formErr").textContent = "金额要填数字,比如 25 或 25.5。"; return; }
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) { $("formErr").textContent = "选一下日期。"; return; }
+    const note = $("noteInput").value.trim().slice(0, 60);
+    const target = date.slice(0, 7);
+    const id = editing ? editing.id : newId();
+    const entry = { id, type: formType, amount, cat: formCat, note, date, ts: new Date().toISOString() };
+    $("saveBtn").disabled = true;
+    try {
+      if (editing && editing.month !== target) {
+        await mutateMonth(editing.month, (m) => { m.entries = m.entries.filter(e => e.id !== id); });
+      }
+      await mutateMonth(target, (m) => {
+        const i = m.entries.findIndex(e => e.id === id);
+        if (i >= 0) { entry.ts = m.entries[i].ts || entry.ts; m.entries[i] = entry; } else m.entries.push(entry);
+      });
+      closeSheet();
+      if (target !== monthKey) { monthKey = target; subscribeMonth(); }
+    } catch (e) {
+      $("formErr").textContent = "没保存上,手机存储可能满了,先备份再删掉一些旧记录。";
+    } finally { $("saveBtn").disabled = false; }
+  }
+
+  async function deleteEntry() {
+    const btn = $("deleteBtn");
+    if (!btn.dataset.armed) { btn.dataset.armed = "1"; btn.textContent = "确定删除?"; return; }
+    if (!editing) return;
+    const { month, id } = editing;
+    try { await mutateMonth(month, (m) => { m.entries = m.entries.filter(e => e.id !== id); }); closeSheet(); }
+    catch { $("formErr").textContent = "没删掉,再试一次。"; }
+  }
+
+  function openBudget() {
+    $("budgetInput").value = store.budget ? (store.budget / 100).toFixed(0) : "";
+    $("budgetErr").textContent = "";
+    $("budgetScrim").hidden = false;
+  }
+  async function saveBudget(ev) {
+    ev.preventDefault();
+    const raw = $("budgetInput").value.trim();
+    const cents = raw ? parseCents(raw) : 0;
+    if (cents === null) { $("budgetErr").textContent = "预算要填数字,比如 5000。"; return; }
+    try { store.budget = cents; saveStore(); $("budgetScrim").hidden = true; render(); }
+    catch { $("budgetErr").textContent = "没保存上,手机存储可能满了。"; }
+  }
+
+  // ---- Alipay CSV import ----
+  const CAT_MAP = [
+    [/餐饮|美食|外卖|饮品|咖啡|奶茶|面包/, "餐饮"],
+    [/超市|生鲜|买菜|蔬菜|水果|盒马|山姆|朴朴|叮咚/, "买菜"],
+    [/交通|出行|地铁|公交|打车|加油|停车|高速|滴滴|铁路|航空/, "交通"],
+    [/服饰|鞋|包|数码|电器|购物|网购|淘宝|天猫|京东/, "购物"],
+    [/日用|百货|家居|日化/, "日用"],
+    [/住房|房租|物业|水费|电费|燃气|维修|家政/, "居家"],
+    [/宠物|猫/, "猫咪"],
+    [/运动|健身|户外/, "运动"],
+    [/医疗|药|医院|健康/, "医疗"],
+    [/美容|美发|理发|美甲|护肤/, "美容"],
+    [/娱乐|休闲|电影|游戏|会员|视频|音乐|文化/, "娱乐"],
+    [/红包|转账|人情|礼/, "人情"],
+    [/通讯|话费|流量|宽带/, "话费"],
+  ];
+  function guessCat(text, type) {
+    if (type === "in") {
+      if (/退款/.test(text)) return "退款";
+      if (/红包/.test(text)) return "红包";
+      if (/工资|薪/.test(text)) return "工资";
+      if (/收益|理财|基金|余额宝/.test(text)) return "理财";
+      return "其他";
+    }
+    for (const [re, c] of CAT_MAP) if (re.test(text)) return c;
+    return "其他";
+  }
+  function splitCsvLine(line) {
+    const out = []; let cur = "", q = false;
+    for (let i = 0; i < line.length; i++) {
+      const ch = line[i];
+      if (q) { if (ch === '"') { if (line[i + 1] === '"') { cur += '"'; i++; } else q = false; } else cur += ch; }
+      else if (ch === '"') q = true;
+      else if (ch === ",") { out.push(cur); cur = ""; }
+      else cur += ch;
+    }
+    out.push(cur);
+    return out.map(s => s.replace(/\t/g, "").trim());
+  }
+  function decodeBytes(buf) {
+    const utf = new TextDecoder("utf-8", { fatal: false }).decode(buf);
+    if (utf.includes("交易时间")) return utf;
+    try { return new TextDecoder("gbk").decode(buf); } catch { return utf; }
+  }
+  function parseAlipay(text) {
+    const lines = text.split(/\r?\n/);
+    const hi = lines.findIndex(l => l.includes("交易时间") && l.includes("金额"));
+    if (hi < 0) throw new Error("没找到「交易时间」和「金额」这两列,确认是支付宝导出的账单 CSV。");
+    const head = splitCsvLine(lines[hi]);
+    const col = (re) => head.findIndex(h => re.test(h));
+    const cTime = col(/交易时间|交易创建时间/), cAmt = col(/金额/), cDir = col(/收\/支/),
+          cCat = col(/交易分类|类型/), cParty = col(/交易对方/), cGoods = col(/商品/), cStatus = col(/交易状态|状态/), cNo = col(/交易订单号|交易号/);
+    if (cTime < 0 || cAmt < 0 || cDir < 0) throw new Error("账单格式认不出来,缺少交易时间、金额或收/支列。");
+    const rows = [];
+    for (let i = hi + 1; i < lines.length; i++) {
+      if (!lines[i].trim() || lines[i].startsWith("-")) continue;
+      const f = splitCsvLine(lines[i]);
+      const dir = f[cDir] || "";
+      if (!/^(支出|收入)$/.test(dir)) continue;
+      const status = cStatus >= 0 ? f[cStatus] : "";
+      if (/关闭|失败|退款成功/.test(status) && dir === "支出") continue;
+      const m = (f[cTime] || "").match(/(\d{4})[-\/](\d{1,2})[-\/](\d{1,2})/);
+      const amount = parseCents(f[cAmt]);
+      if (!m || !amount) continue;
+      const date = m[1] + "-" + m[2].padStart(2, "0") + "-" + m[3].padStart(2, "0");
+      const type = dir === "收入" ? "in" : "out";
+      const party = cParty >= 0 ? f[cParty] : "", goods = cGoods >= 0 ? f[cGoods] : "", cat = cCat >= 0 ? f[cCat] : "";
+      const note = [party, goods].filter(Boolean).join(" · ").slice(0, 60);
+      const no = cNo >= 0 ? f[cNo] : "";
+      rows.push({ id: "ali-" + (no || (date + amount + note)).replace(/[^\w-]/g, "").slice(0, 40), type, amount, cat: guessCat(cat + " " + party + " " + goods, type), note, date, ts: new Date().toISOString(), src: "alipay" });
+    }
+    return rows;
+  }
+  async function onImportFile(ev) {
+    const file = ev.target.files && ev.target.files[0];
+    ev.target.value = "";
+    if (!file) return;
+    $("importErr").textContent = ""; $("importPreview").replaceChildren(); importRows = [];
+    try {
+      const text = decodeBytes(await file.arrayBuffer());
+      importRows = parseAlipay(text);
+      const outN = importRows.filter(r => r.type === "out");
+      const sum = outN.reduce((s, r) => s + r.amount, 0);
+      $("importSummary").textContent = importRows.length ? "读到 " + importRows.length + " 笔,其中支出 " + outN.length + " 笔共 " + yuan(sum) + "。同一笔订单重复导入只会算一次。" : "这个文件里没有读到收支记录。";
+      for (const r of importRows.slice(0, 8)) {
+        const d = document.createElement("div");
+        const a = document.createElement("span"); a.textContent = r.date.slice(5) + " " + r.cat + " " + (r.note || "");
+        a.style.minWidth = "0"; a.style.overflow = "hidden"; a.style.textOverflow = "ellipsis"; a.style.whiteSpace = "nowrap";
+        const b = document.createElement("span"); b.className = "num"; b.textContent = (r.type === "in" ? "+" : "-") + yuan(r.amount).slice(1);
+        d.append(a, b); $("importPreview").append(d);
+      }
+      $("confirmImport").disabled = !importRows.length;
+    } catch (e) { $("importSummary").textContent = ""; $("importErr").textContent = e.message || "读不了这个文件。"; $("confirmImport").disabled = true; }
+    $("importScrim").hidden = false;
+  }
+  async function confirmImport() {
+    if (!importRows.length) return;
+    $("confirmImport").disabled = true;
+    const byMonth = {};
+    for (const r of importRows) (byMonth[r.date.slice(0, 7)] ||= []).push(r);
+    try {
+      for (const [k, list] of Object.entries(byMonth)) {
+        await mutateMonth(k, (m) => {
+          const have = new Set(m.entries.map(e => e.id));
+          for (const r of list) if (!have.has(r.id)) m.entries.push(r);
+        });
+      }
+      $("importScrim").hidden = true;
+      const latest = Object.keys(byMonth).sort().pop();
+      if (latest && latest !== monthKey) { monthKey = latest; subscribeMonth(); }
+    } catch { $("importErr").textContent = "没导入成功,手机存储可能满了。"; $("confirmImport").disabled = false; }
+  }
+
+  // ---- wiring ----
+  $("prev").onclick = () => { const [y, m] = monthKey.split("-").map(Number); monthKey = ymKey(new Date(y, m - 2, 1)); subscribeMonth(); };
+  $("next").onclick = () => { const [y, m] = monthKey.split("-").map(Number); const k = ymKey(new Date(y, m, 1)); if (k <= ymKey(new Date())) { monthKey = k; subscribeMonth(); } };
+  $("addBtn").onclick = () => openSheet(null);
+  $("closeSheet").onclick = closeSheet;
+  $("sheetScrim").addEventListener("click", (e) => { if (e.target === $("sheetScrim")) closeSheet(); });
+  $("typeOut").onclick = () => setType("out");
+  $("typeIn").onclick = () => setType("in");
+  $("entryForm").addEventListener("submit", saveEntry);
+  $("deleteBtn").onclick = deleteEntry;
+  $("budgetForm").addEventListener("submit", saveBudget);
+  $("closeBudget").onclick = () => { $("budgetScrim").hidden = true; };
+  $("importBtn").onclick = () => $("importFile").click();
+  $("importFile").addEventListener("change", onImportFile);
+  $("closeImport").onclick = () => { $("importScrim").hidden = true; };
+  $("confirmImport").onclick = confirmImport;
+
+  // ---- backup ----
+  function renderBackupHint() {
+    const h = $("backupHint");
+    if (!store.entries.length) { h.textContent = "记录只存在这台手机里,删掉桌面图标或清理浏览器数据会丢,记得每月备份一次。"; return; }
+    if (!store.lastBackup) { h.textContent = "还没备份过。记录只存在这台手机里,点「备份数据」存一份到文件或发给自己。"; return; }
+    const days = Math.floor((Date.now() - new Date(store.lastBackup).getTime()) / 86400000);
+    h.textContent = "上次备份:" + store.lastBackup.slice(0, 10) + (days >= 30 ? ",已经 " + days + " 天了,该备份了。" : "。");
+  }
+  async function backup() {
+    const stamp = todayStr().replace(/-/g, "");
+    const blob = new Blob([JSON.stringify({ app: "xiaozhangben", version: 1, exportedAt: new Date().toISOString(), entries: store.entries, budget: store.budget }, null, 1)], { type: "application/json" });
+    const file = new File([blob], "小账本备份-" + stamp + ".json", { type: "application/json" });
+    try {
+      if (navigator.canShare && navigator.canShare({ files: [file] })) {
+        await navigator.share({ files: [file], title: "小账本备份" });
+      } else {
+        const a = document.createElement("a"); a.href = URL.createObjectURL(blob); a.download = file.name;
+        document.body.append(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(a.href), 5000);
+      }
+      store.lastBackup = new Date().toISOString(); saveStore(); renderBackupHint();
+    } catch (e) { if (e && e.name !== "AbortError") showNotice("备份没成功:" + (e.message || e)); }
+  }
+  async function restore(ev) {
+    const f = ev.target.files && ev.target.files[0]; ev.target.value = "";
+    if (!f) return;
+    try {
+      const data = JSON.parse(await f.text());
+      if (!data || !Array.isArray(data.entries)) throw new Error("不是小账本的备份文件。");
+      const have = new Set(store.entries.map(e => e.id));
+      let added = 0;
+      for (const e of data.entries) if (e && e.id && e.date && e.amount && !have.has(e.id)) { store.entries.push(e); added++; }
+      if (!store.budget && data.budget) store.budget = data.budget;
+      saveStore(); subscribeMonth();
+      showNotice("恢复了 " + added + " 笔记录,已有的不会重复。");
+    } catch (e) { showNotice("恢复失败:" + (e.message || "文件读不了")); }
+  }
+
+  $("backupBtn").onclick = backup;
+  $("restoreBtn").onclick = () => $("restoreFile").click();
+  $("restoreFile").addEventListener("change", restore);
+
+  try { loadStore(); } catch {}
+  try { localStorage.setItem("xzb.probe", "1"); localStorage.removeItem("xzb.probe"); }
+  catch { showNotice("这个浏览器存不了数据(可能是无痕模式),换普通模式打开。"); $("addBtn").disabled = true; $("importBtn").disabled = true; }
+  if (navigator.storage && navigator.storage.persist) navigator.storage.persist().catch(() => {});
+  if ("serviceWorker" in navigator) navigator.serviceWorker.register("sw.js").catch(() => {});
+  subscribeMonth();
+})();
+</script>
+</body>
+</html>
